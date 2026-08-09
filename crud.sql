@@ -6,37 +6,38 @@
 
 USE airbnb_db;   -- change to your actual schema name
 
--- -------------------------------------------------------------------------
--- Reference: expected table structure (created already by main.py import)
--- -------------------------------------------------------------------------
--- CREATE TABLE airbnb_listings (
---     id                              BIGINT PRIMARY KEY,
---     name                            VARCHAR(255),
---     host_id                         BIGINT,
---     host_identity_verified          VARCHAR(20),
---     host_name                       VARCHAR(100),
---     neighbourhood_group             VARCHAR(50),
---     neighbourhood                   VARCHAR(100),
---     lat                             DECIMAL(9,6),
---     long                            DECIMAL(9,6),
---     country                         VARCHAR(50),
---     country_code                    VARCHAR(5),
---     instant_bookable                VARCHAR(5),
---     cancellation_policy             VARCHAR(20),
---     room_type                       VARCHAR(50),
---     construction_year               INT,
---     price                           DECIMAL(10,2),
---     service_fee                     DECIMAL(10,2),
---     minimum_nights                  INT,
---     number_of_reviews               INT,
---     last_review                     DATE,
---     reviews_per_month               DECIMAL(5,2),
---     review_rate_number              INT,
---     calculated_host_listings_count  INT,
---     availability_365                INT,
---     house_rules                     TEXT,
---     license                         VARCHAR(50)
--- );
+-- Creating table
+CREATE TABLE airbnb_listings (
+    id BIGINT PRIMARY KEY,
+    name VARCHAR(255),
+    host_id BIGINT,
+    host_identity_verified VARCHAR(20),
+    host_name VARCHAR(100),
+    neighbourhood_group VARCHAR(100),
+    neighbourhood VARCHAR(100),
+    lat DECIMAL(10,6),
+    `long` DECIMAL(10,6),
+    country VARCHAR(100),
+    country_code VARCHAR(10),
+    instant_bookable VARCHAR(10),
+    cancellation_policy VARCHAR(50),
+    room_type VARCHAR(50),
+    construction_year INT,
+    price DECIMAL(10,2),
+    service_fee DECIMAL(10,2),
+    minimum_nights INT,
+    number_of_reviews INT,
+    last_review VARCHAR(20), 
+    reviews_per_month DECIMAL(5,2),
+    review_rate_number INT,
+    calculated_host_listings_count INT,
+    availability_365 INT,
+    house_rules TEXT
+);
+-- Indexing for Rationale Columns
+
+CREATE INDEX idx_neighbourhood_group ON airbnb_listings(neighbourhood_group);
+CREATE INDEX idx_room_type ON airbnb_listings(room_type);
 
 -- =========================================================================
 -- 4. CRUD OPERATIONS
