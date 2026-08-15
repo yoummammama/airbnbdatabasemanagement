@@ -13,7 +13,7 @@ from mysql.connector import Error
 DB_CONFIG = {
     "host": "localhost",
     "user": "root",         # change to your MySQL username
-    "password": "",         # change to your MySQL password
+    "password": "root",         # change to your MySQL password
     "database": "airbnb_db" # change to your schema name
 }
 
