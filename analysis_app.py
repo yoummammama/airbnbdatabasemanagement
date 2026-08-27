@@ -9,12 +9,39 @@ and prints them as formatted tables.
 Requires: pip install mysql-connector-python
 """
 
+import os
 import sys
 import mysql.connector
 from mysql.connector import Error
 
 # Allow the summary (which contains box-drawing chars) to print on Windows
 sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+
+def _load_analysis_queries():
+    """Read the 6 analysis SELECT queries from analysis.sql (not hardcoded)."""
+    sql_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "analysis.sql")
+    with open(sql_path, encoding="utf-8") as f:
+        content = f.read()
+
+    # Only the query section between USE and the first DROP statement
+    start = content.find("USE airbnb_db;")
+    end = content.find("DROP PROCEDURE")
+    section = content[start:end]
+
+    # Drop comment-only lines BEFORE splitting, so semicolons inside
+    # comments (e.g. the Query 6 rationale) do not break the statements
+    sql_lines = [
+        ln for ln in section.splitlines()
+        if ln.strip() and not ln.lstrip().startswith("--")
+    ]
+
+    queries = []
+    for chunk in "\n".join(sql_lines).split(";"):
+        sql = chunk.strip()
+        if sql.upper().lstrip().startswith("SELECT"):
+            queries.append(sql)
+    return queries
 
 DB_CONFIG = {
     "host": "localhost",
@@ -64,92 +91,40 @@ def run(conn, sql, title):
 
 
 # ---------------------------------------------------------------------
-# Query 1-6 : the exact SELECTs from analysis.sql
+# Query 1-6 : the exact SELECTs from analysis.sql (loaded, not hardcoded)
 # ---------------------------------------------------------------------
+ANALYSIS_QUERIES = _load_analysis_queries()
+if len(ANALYSIS_QUERIES) < 6:
+    raise SystemExit("analysis.sql: expected at least 6 SELECT queries, "
+                     f"found {len(ANALYSIS_QUERIES)}")
+
+
 def q1_expensive(conn):
-    run(conn, """
-        SELECT id, name, neighbourhood, room_type, price
-        FROM airbnb_listings
-        ORDER BY price DESC
-        LIMIT 10""",
-        "Query 1: Top 10 most expensive listings")
+    run(conn, ANALYSIS_QUERIES[0], "Query 1: Top 10 most expensive listings")
 
 
 def q2_most_reviewed(conn):
-    run(conn, """
-        SELECT id, name, neighbourhood, number_of_reviews, review_rate_number
-        FROM airbnb_listings
-        ORDER BY number_of_reviews DESC
-        LIMIT 10""",
-        "Query 2: Most frequently reviewed listings")
+    run(conn, ANALYSIS_QUERIES[1], "Query 2: Most frequently reviewed listings")
 
 
 def q3_best_value(conn):
-    run(conn, """
-        SELECT name, neighbourhood_group, room_type, price,
-               number_of_reviews, review_rate_number
-        FROM airbnb_listings
-        WHERE price < 150
-          AND number_of_reviews > 50
-          AND review_rate_number > 4.7
-        ORDER BY review_rate_number DESC, price ASC
-        LIMIT 15""",
+    run(conn, ANALYSIS_QUERIES[2],
         "Query 3: Affordable, popular & well-rated listings (<150, >50 reviews, >4.7)")
 
 
 def q4_borough_stats(conn):
-    run(conn, """
-        SELECT neighbourhood_group AS borough,
-               COUNT(*) AS total_listings,
-               ROUND(AVG(price), 2) AS avg_price,
-               ROUND(MIN(price), 2) AS min_price,
-               ROUND(MAX(price), 2) AS max_price,
-               ROUND(AVG(availability_365), 0) AS avg_availability_days
-        FROM airbnb_listings
-        WHERE price > 0 AND price < 10000
-        GROUP BY neighbourhood_group
-        ORDER BY avg_price DESC""",
-        "Query 4: Borough market overview")
+    run(conn, ANALYSIS_QUERIES[3], "Query 4: Borough market overview")
 
 
 def q5_demand(conn):
-    run(conn, """
-        SELECT CASE
-                 WHEN availability_365 = 0 THEN 'Fully Booked'
-                 WHEN availability_365 BETWEEN 1 AND 90 THEN 'Very High Demand'
-                 WHEN availability_365 BETWEEN 91 AND 200 THEN 'High Demand'
-                 WHEN availability_365 BETWEEN 201 AND 300 THEN 'Moderate Demand'
-                 ELSE 'Low Demand'
-               END AS demand_category,
-               COUNT(*) AS listings,
-               ROUND(AVG(price), 2) AS avg_price,
-               ROUND(AVG(number_of_reviews), 0) AS avg_reviews,
-               ROUND(MIN(price), 2) AS min_price,
-               ROUND(MAX(price), 2) AS max_price
-        FROM airbnb_listings
-        WHERE price > 0
-        GROUP BY demand_category
-        ORDER BY avg_price DESC""",
-        "Query 5: Demand category analysis")
+    run(conn, ANALYSIS_QUERIES[4], "Query 5: Demand category analysis")
 
 
 def q6_monthly(conn):
-    run(conn, """
-        SELECT DATE_FORMAT(STR_TO_DATE(last_review, '%m/%d/%Y'), '%Y-%m')
-                 AS review_month,
-               COUNT(*) AS listings_reviewed,
-               ROUND(AVG(price), 2) AS avg_price,
-               ROUND(AVG(review_rate_number), 1) AS avg_rating
-        FROM airbnb_listings
-        WHERE last_review IS NOT NULL
-          AND last_review != ''
-          AND STR_TO_DATE(last_review, '%m/%d/%Y') IS NOT NULL
-        GROUP BY review_month
-        ORDER BY review_month DESC
-        LIMIT 12""",
-        "Query 6: Monthly review trends (last 12 months)")
+    run(conn, ANALYSIS_QUERIES[5], "Query 6: Monthly review trends (last 12 months)")
 
-
+def q7_low_activity(conn):
+    run(conn, ANALYSIS_QUERIES[6], "Query 7: Monthly review activity with low counts")
 # ---------------------------------------------------------------------
 # Procedure: sp_borough_market_report(borough, OUT summary)
 # ---------------------------------------------------------------------
@@ -183,25 +158,49 @@ def proc_borough_report(conn):
 # ---------------------------------------------------------------------
 def fn_price_tier_demo(conn):
     run(conn, """
-        SELECT id, name, price,
-               fn_price_tier(price) AS price_tier
+        SELECT 
+            fn_price_tier(price) AS price_tier,
+            COUNT(*) AS total_listings,
+            ROUND(AVG(price), 2) AS avg_price,
+            ROUND(MIN(price), 2) AS min_price,
+            ROUND(MAX(price), 2) AS max_price,
+            ROUND(AVG(review_rate_number), 2) AS avg_rating,
+            ROUND(AVG(availability_365), 0) AS avg_availability
         FROM airbnb_listings
         WHERE price > 0
-        ORDER BY price DESC
-        LIMIT 10""",
-        "Function: fn_price_tier applied to top 10 listings")
+        GROUP BY price_tier
+        ORDER BY FIELD(price_tier, 'Budget', 'Standard', 'Premium', 'Luxury')""",
+        "Function: fn_price_tier - Price distribution with tier statistics")
 
 
 def fn_revenue_demo(conn):
     run(conn, """
-        SELECT id, name, price, availability_365,
-               fn_estimated_revenue(price, availability_365) AS est_annual_revenue
+        SELECT 
+            neighbourhood_group AS borough,
+            COUNT(*) AS listings,
+            ROUND(AVG(price), 2) AS avg_price,
+            ROUND(AVG(availability_365), 0) AS avg_availability,
+            ROUND(AVG(fn_estimated_revenue(price, availability_365)), 2) AS avg_annual_revenue,
+            ROUND(SUM(fn_estimated_revenue(price, availability_365)), 2) AS total_annual_revenue
+        FROM airbnb_listings
+        WHERE price > 0 AND neighbourhood_group IS NOT NULL
+        GROUP BY borough
+        ORDER BY total_annual_revenue DESC""",
+        "Function: fn_estimated_revenue - Revenue by borough")
+
+def func_pricetier_revenue(conn):
+    run(conn, """
+        SELECT 
+            fn_price_tier(price) AS price_tier,
+            COUNT(*) AS listings,
+            ROUND(AVG(price), 2) AS avg_price,
+            ROUND(AVG(availability_365), 0) AS avg_availability,
+            ROUND(AVG(fn_estimated_revenue(price, availability_365)), 2) AS avg_annual_revenue
         FROM airbnb_listings
         WHERE price > 0
-        ORDER BY price DESC
-        LIMIT 10""",
-        "Function: fn_estimated_revenue (60% occupancy) applied to top 10")
-
+        GROUP BY price_tier
+        ORDER BY FIELD(price_tier, 'Budget', 'Standard', 'Premium', 'Luxury')""",
+        "Function: fn_estimated_revenue - fn_estimated_revenue")
 
 MENU = """
 =========================================
@@ -213,9 +212,11 @@ MENU = """
  4. Q4 - Borough market overview
  5. Q5 - Demand category analysis
  6. Q6 - Monthly review trends
- 7. Procedure - Borough market report
- 8. Function  - Price tier
- 9. Function  - Estimated revenue
+ 7. Q7 - Monthly review activity with low counts
+ 8. Procedure - Borough market report
+ 9. Function  - Price tier
+ 10. Function  - Estimated revenue
+ 11. Function - Estimated revenue by price tier
  0. Exit
 -----------------------------------------
 """
@@ -233,9 +234,11 @@ def main():
         "4": q4_borough_stats,
         "5": q5_demand,
         "6": q6_monthly,
-        "7": proc_borough_report,
-        "8": fn_price_tier_demo,
-        "9": fn_revenue_demo,
+        "7": q7_low_activity,
+        "8": proc_borough_report,
+        "9": fn_price_tier_demo,
+        "10": fn_revenue_demo,
+        "11": func_pricetier_revenue,
     }
 
     try:

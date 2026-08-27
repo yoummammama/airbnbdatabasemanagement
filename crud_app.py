@@ -101,7 +101,7 @@ def retrieve_by_id(conn):
         print("id must be an integer.")
         return
 
-    cursor = conn.cursor()
+    cursor = conn.cursor()``
     try:
         cursor.callproc("sp_retrieve_by_id", [p_id])
         found = False

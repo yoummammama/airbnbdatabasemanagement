@@ -7,6 +7,14 @@
 
 USE airbnb_db;
 
+-- -------------------------------------------------------------------------
+-- Query 1: Top 10 most expensive listings (premium listing identification)
+-- ORDER BY price DESC sorts the table so the most expensive listings come
+-- first, and LIMIT 10 keeps only the top 10. This combination is the most
+-- efficient and natural way to identify "premium" listings: it requires no
+-- arbitrary cut-off value, works with an index on price, and returns a
+-- focused, readable shortlist instead of the full table.
+-- -------------------------------------------------------------------------
 SELECT id, name, neighbourhood, room_type, price 
 
 FROM airbnb_listings 
@@ -15,6 +23,15 @@ ORDER BY price DESC
 
 LIMIT 10; 
 
+-- -------------------------------------------------------------------------
+-- Query 2: Top 10 most-reviewed listings
+-- number_of_reviews is a count of how many guests actually left a review,
+-- so it reflects listing popularity/booking volume only indirectly. It does
+-- NOT measure guest satisfaction: a listing can be heavily reviewed because
+-- it is cheap, central, or newsworthy, while guests are actually unhappy.
+-- Satisfaction is better judged from review_rate_number (the star rating),
+-- which is why both columns are selected here side by side.
+-- -------------------------------------------------------------------------
 SELECT id, name, neighbourhood, number_of_reviews, review_rate_number 
 
 FROM airbnb_listings 
@@ -23,6 +40,15 @@ ORDER BY number_of_reviews DESC
 
 LIMIT 10; 
 
+-- -------------------------------------------------------------------------
+-- Query 3: Value-for-money listings
+-- The thresholds (price < $150, number_of_reviews > 50, review_rate_number
+-- > 4.7) were deliberately chosen to represent "value-for-money" listings:
+-- a price ceiling keeps the listing affordable, a minimum review count
+-- filters out brand-new/untested listings, and a high star rating ensures
+-- prior guests were satisfied. Sorting by rating then price surfaces the
+-- best-rated affordable options first.
+-- -------------------------------------------------------------------------
 SELECT  
 
     name, 
@@ -49,6 +75,15 @@ ORDER BY review_rate_number DESC, price ASC
 
 LIMIT 15; 
 
+-- -------------------------------------------------------------------------
+-- Query 4: Borough-level market summary
+-- COUNT, AVG, MIN, MAX (and AVG again for availability) collapse every
+-- listing in a borough into one row, giving a compact market summary per
+-- neighbourhood group: how many listings exist, the typical price, the
+-- cheapest and most expensive offers, and average availability. Aggregates
+-- are the right tool here because the goal is a comparative overview of
+-- boroughs, not an inspection of individual rows.
+-- -------------------------------------------------------------------------
 SELECT  
 
     neighbourhood_group AS borough, 
@@ -71,6 +106,15 @@ GROUP BY neighbourhood_group
 
 ORDER BY avg_price DESC; 
 
+-- -------------------------------------------------------------------------
+-- Query 5: Demand segments by availability
+-- The CASE expression buckets listings into demand categories based on
+-- availability_365 (how many days per year are free). This grouping is used
+-- for segment COMPARISON (how price/reviews differ across segments) and
+-- must NOT be read as proof of causation: availability is a consequence of
+-- demand, pricing, and host behaviour combined, and a cross-tab of segments
+-- only shows association, not cause and effect.
+-- -------------------------------------------------------------------------
 SELECT  
     CASE  
         WHEN availability_365 = 0 THEN 'Fully Booked' 
@@ -89,6 +133,15 @@ WHERE price > 0
 GROUP BY demand_category 
 ORDER BY avg_price DESC; 
 
+-- -------------------------------------------------------------------------
+-- Query 6: Monthly review activity
+-- Grouping by month (last_review) aggregates reviews and prices by calendar
+-- month, which helps detect two things: (a) seasonality - months with many
+-- reviews or higher prices reveal busy/demand seasons; and (b) data-entry
+-- issues - impossible dates, stray formats, or months with implausible
+-- counts surface when STR_TO_DATE fails or a month looks abnormal, and the
+-- guards on last_review filter out exactly those bad rows.
+-- -------------------------------------------------------------------------
 SELECT  
     DATE_FORMAT(STR_TO_DATE(last_review, '%m/%d/%Y'), '%Y-%m') AS review_month, 
     COUNT(*) AS listings_reviewed, 
@@ -98,9 +151,27 @@ FROM airbnb_listings
 WHERE last_review IS NOT NULL  
   AND last_review != '' 
   AND STR_TO_DATE(last_review, '%m/%d/%Y') IS NOT NULL 
+  AND STR_TO_DATE(last_review, '%m/%d/%Y') <= "2022-4-30" 
 GROUP BY review_month 
 ORDER BY review_month DESC 
 LIMIT 12; 
+
+-- -------------------------------------------------------------------------
+-- Query 7: Monthly review activity with low counts
+-- Find months with very low review activity (potential data errors)
+SELECT 
+    DATE_FORMAT(STR_TO_DATE(last_review, '%m/%d/%Y'), '%Y-%m') AS review_month,
+    COUNT(*) AS listings_reviewed,
+    ROUND(AVG(price), 2) AS avg_price,
+    ROUND(AVG(review_rate_number), 2) AS avg_rating
+FROM airbnb_listings
+WHERE last_review IS NOT NULL 
+  AND last_review != ''
+  AND STR_TO_DATE(last_review, '%m/%d/%Y') IS NOT NULL
+GROUP BY review_month
+HAVING COUNT(*) <= 5   -- Unrealistically low activity
+ORDER BY review_month DESC;
+-- -------------------------------------------------------------------------
 
 DROP PROCEDURE IF EXISTS sp_borough_market_report; 
  

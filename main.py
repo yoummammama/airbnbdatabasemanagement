@@ -18,6 +18,26 @@ def select_csv_file():
 
 def connect_to_mysql():
     """Connects to the assignment database."""
+import csv
+import os
+import tkinter as tk
+from tkinter import filedialog
+import mysql.connector
+from mysql.connector import Error
+
+def select_csv_file():
+    """Opens a window to prompt the user for the CSV file."""
+    root = tk.Tk()
+    root.withdraw()
+    file_path = filedialog.askopenfilename(
+        title="Select Airbnb CSV File",
+        filetypes=[("CSV files", "*.csv")]
+    )
+    root.destroy()
+    return file_path
+
+def connect_to_mysql():
+    """Connects to the assignment database."""
     return mysql.connector.connect(
         host="localhost",
         user="root",
@@ -51,72 +71,44 @@ def import_csv_to_mysql(file_path):
             ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
-        with open(path, mode="r", encoding="utf-8-sig") as file:
-            reader = csv.DictReader(file)
-
-            # Clean leading/trailing spaces from all CSV headers automatically
-            reader.fieldnames = [
-                f.strip() for f in reader.fieldnames if f is not None
-            ]
-
+        with open(file_path, mode="r", encoding="utf-8-sig", newline="") as csv_file:
+            reader = csv.DictReader(csv_file)
+            
             for row in reader:
-                # Skip empty or broken rows at the end of the file
-                if not row or not any(row.values()):
-                    continue
-
-                # Safely clean keys in the current row
-                row_clean = {
-                    k.strip(): v for k, v in row.items() if k is not None
-                }
-
-                # Data Transformation: Clean price and fee
-                raw_price = (
-                    row_clean.get("price", "0")
-                    .replace("$", "")
-                    .replace(",", "")
-                    .strip()
-                )
+                # Data Transformation: Clean the price and service fee columns
+                raw_price = row.get("price", "0").replace("$", "").replace(",", "").strip()
                 clean_price = float(raw_price) if raw_price else 0.00
-
-                raw_fee = (
-                    row_clean.get("service_fee", "0")
-                    .replace("$", "")
-                    .replace(",", "")
-                    .strip()
-                )
+                
+                raw_fee = str(row.get("service_fee") or row.get("service fee") or "0").replace("$", "").replace(",", "").strip()
                 clean_fee = float(raw_fee) if raw_fee else 0.00
 
-                # Safe extraction using .get() with fallback column names
+                # Prepare the tuple for insertion (handle empty strings turning into None/NULL)
                 validated_data = (
-                    row_clean.get("id"),
-                    row_clean.get("NAME") or row_clean.get("name"),
-                    row_clean.get("host id") or row_clean.get("host_id"),
-                    row_clean.get("host_identity_verified"),
-                    row_clean.get("host_name"),
-                    row_clean.get("neighbourhood_group")
-                    or row_clean.get("neighbourhood group"),
-                    row_clean.get("neighbourhood"),
-                    row_clean.get("lat") or None,
-                    row_clean.get("long") or row_clean.get("long_") or None,
-                    row_clean.get("country"),
-                    row_clean.get("country_code"),
-                    row_clean.get("instant_bookable"),
-                    row_clean.get("cancellation_policy"),
-                    row_clean.get("room_type"),
-                    row_clean.get("construction_year") or None,
-                    clean_price,
-                    clean_fee,
-                    row_clean.get("minimum_nights") or None,
-                    row_clean.get("number_of_reviews") or None,
-                    row_clean.get("last_review"),
-                    row_clean.get("reviews_per_month") or None,
-                    row_clean.get("review_rate_number") or None,
-                    row_clean.get("calculated_host_listings_count") or None,
-                    # Checks BOTH 'availability_365' and 'availability 365' safely:
-                    row_clean.get("availability_365")
-                    or row_clean.get("availability 365")
-                    or None,
-                    row_clean.get("house_rules"),
+                    row["id"], 
+                    row["NAME"], 
+                    row["host id"], 
+                    row["host_identity_verified"], 
+                    row["host name"], 
+                    row["neighbourhood group"], 
+                    row["neighbourhood"], 
+                    row["lat"] or None, 
+                    row["long"] or None, 
+                    row["country"], 
+                    row["country code"], 
+                    row["instant_bookable"], 
+                    row["cancellation_policy"], 
+                    row["room type"], 
+                    row["Construction year"] or None, 
+                    clean_price, 
+                    clean_fee, 
+                    row["minimum nights"] or None, 
+                    row["number of reviews"] or None, 
+                    row["last review"], 
+                    row["reviews per month"] or None, 
+                    row["review rate number"] or None, 
+                    row["calculated host listings count"] or None, 
+                    row["availability 365"] or None, 
+                    row["house_rules"]
                 )
 
                 cursor.execute(insert_query, validated_data)
@@ -138,3 +130,5 @@ if __name__ == "__main__":
     print("Initializing Airbnb Data Import...")
     path = select_csv_file()
     import_csv_to_mysql(path)
+
+
